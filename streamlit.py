@@ -11,8 +11,8 @@ st.title("🛡️ Continuous DeFi Insurance Protocol Simulator")
 with st.sidebar:
     st.header("⚙️ Market Parameters")
     seed = st.number_input("Random Seed (price generation)", 0, 100, 42)
-    base_apr = st.slider("Base Premium APR", 0.05, 0.50, 0.15, 0.01, format="%.2f")
-    k_util = st.slider("Utilization Sensitivity (k)", 0.5, 5.0, 2.0, 0.1)
+    base_apr = st.slider("Base Premium APR", 0.001, 0.50, 0.15, 0.001, format="%.2f")
+    k_util = st.slider("Utilization Sensitivity (k)", 0.01, 5.0, 2.0, 0.01)
     payout_mult = st.slider("Payout Multiplier", 2.0, 10.0, 5.0, 0.5)
     protocol_fee = st.slider("Protocol Fee", 0.0, 0.20, 0.10, 0.01, format="%.2f")
     lock_days = st.number_input("Lock Period (days)", 1, 30, 7)
@@ -23,12 +23,13 @@ with st.sidebar:
         [
             "Linear (proportional)",
             "Quadratic (accelerating)",
-            "Exponential - Mild (k=10)",
-            "Exponential - Moderate (k=15)",
-            "Exponential - Aggressive (k=20)",
+            "Exponential - Set K",
         ],
-        index=4,
+        index=2,
     )
+    if "Exponential" in risk_shape:
+        exp_k = st.number_input("Exponential Type", 1, 100)
+
     target_price = st.number_input("Target Price", 0.5, 2.0, 1.0, 0.01)
 
     st.header("👥 Participants")
@@ -60,17 +61,13 @@ with st.sidebar:
     )
 
 
-def get_risk_function(shape_name):
+def get_risk_function(shape_name, k: int | None = None):
     if "Linear" in shape_name:
         return lambda deviation: deviation
     elif "Quadratic" in shape_name:
         return lambda deviation: deviation**2
-    elif "Mild" in shape_name:
-        return lambda deviation: 1 - np.exp(-10 * deviation)
-    elif "Moderate" in shape_name:
-        return lambda deviation: 1 - np.exp(-15 * deviation)
-    elif "Aggressive" in shape_name:
-        return lambda deviation: 1 - np.exp(-20 * deviation)
+    elif "Exponential" in shape_name:
+        return lambda deviation: 1 - np.exp(-k * deviation)
     return lambda deviation: deviation
 
 
@@ -133,7 +130,9 @@ def run_simulation(insured_pos, lp_pos, params):
 
     price = generate_price_scenario(params["scenario"], params["sim_days"], params["target"], seed=42)
 
-    risk_func = get_risk_function(params["risk_shape"])
+    risk_func = get_risk_function(
+        params["risk_shape"], params["exp_k"] if "Exponential" in params["risk_shape"] else None
+    )
     deviation = np.abs(price / params["target"] - 1)
     f_t = risk_func(deviation)
 
@@ -284,6 +283,7 @@ if st.sidebar.button("🚀 Run Simulation", type="primary"):
         "target": target_price,
         "sim_days": sim_days,
         "scenario": scenario,
+        "exp_k": exp_k if "Exponential" in risk_shape else None,
     }
 
     results = run_simulation(insured_positions, lp_positions, params)
